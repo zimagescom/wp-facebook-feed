@@ -121,7 +121,8 @@ class Facebook_Feed
     {
         if (!empty($fbid)) {
             $transient_name = apply_filters('facebook-feed/posts_transient', 'facebook-'.$fbid, $fbid);
-            $posts = get_transient($transient_name);
+            // $posts = get_transient($transient_name);
+            $posts = [];
 
             if (!empty($posts) || false != $posts) {
                 return $posts;
@@ -132,10 +133,11 @@ class Facebook_Feed
                 'locale' => apply_filters('facebook-feed/parameters/locale', 'fr_FR'),
                 // 'since' => apply_filters('facebook-feed/parameters/since', date('d/m/Y')),
                 'limit' => apply_filters('facebook-feed/parameters/limit', '10'),
-                'fields' => implode(',', apply_filters('facebook-feed/parameters/fields', array('id', 'created_time', 'status_type', 'message', 'story', 'full_picture', 'permalink_url'))),
+                'fields' => implode(',', apply_filters('facebook-feed/parameters/fields', ['id', 'created_time', 'status_type', 'message', 'story', 'full_picture', 'permalink_url'])),
             ];
 
             $response = self::call_api($fbid, apply_filters('facebook-feed/parameters/api', $parameters));
+            
             if ($response === false) {
                 $expire = 60*60*12; // 12h
                 set_transient($transient_name, $response, apply_filters('facebook-feed/posts_transient_lifetime', $expire));
@@ -145,11 +147,15 @@ class Facebook_Feed
             $response = json_decode($response['body'], true);
 
             // FB graph API 2.x => 3.3 backwards comp
-            if (isset($val['status_type']) && isset($val['permalink_url'])) {
-                foreach ($response as $key => $val) {
-                    $response['data'][ $key ]['type'] = $val['status_type'];
-                    $response['data'][ $key ]['link'] = $val['permalink_url'];
+            if (isset($data['status_type']) && isset($data['permalink_url'])) {
+                foreach ($response as $key => $data) {
+                    $response['data'][ $key ]['type'] = $data['status_type'];
+                    $response['data'][ $key ]['link'] = $data['permalink_url'];
                 }
+            }
+
+            foreach ($response['data'] as $key => $data) {
+                $response['data'][ $key ]['full_picture'] = self::format_image_url($data['full_picture']);
             }
 
             $response = apply_filters('facebook-feed/posts', $response);
@@ -162,7 +168,7 @@ class Facebook_Feed
         return false;
     }
 
-    private static function call_api($fbid = '', $parameters = array())
+    private static function call_api($fbid = '', $parameters = [])
     {
         if (!empty($fbid) || !empty($parameters)) {
             $parameters = http_build_query($parameters);
@@ -176,6 +182,37 @@ class Facebook_Feed
         }
 
         return false;
+    }
+
+    private static function format_image_url($image_url = '')
+    {
+        if (str_contains($image_url, 'safe_image.php')) {
+            $image_url = self::get_external_image_url($image_url, 'url');
+        }
+        
+        if (str_contains($image_url, 'app_full_proxy.php')) {
+            $image_url = self::get_external_image_url($image_url, 'src');
+        }
+
+        return $image_url;
+    }
+    
+    private static function get_external_image_url($image_url = '', $parameter = '')
+    {
+        $image_url = urldecode($image_url);
+        $image_url = explode($parameter . '=', $image_url);
+        $image_url = $image_url[1];
+        
+        if (!str_contains($image_url, 'fbcdn-sphotos')) {
+            $image_url = explode('&', $image_url);
+            $image_url = $image_url[0];
+            
+            if (str_contains($image_url, 'fbstaging')) {
+                $image_url = "https://external.xx.fbcdn.net/safe_image.php?url="+urlencode($image_url);
+            }
+        }
+        
+        return $image_url;
     }
 
     private static function write_log($log)
