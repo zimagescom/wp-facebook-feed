@@ -121,8 +121,7 @@ class Facebook_Feed
     {
         if (!empty($fbid)) {
             $transient_name = apply_filters('facebook-feed/posts_transient', 'facebook-'.$fbid, $fbid);
-            // $posts = get_transient($transient_name);
-            $posts = [];
+            $posts = get_transient($transient_name);
 
             if (!empty($posts) || false != $posts) {
                 return $posts;
